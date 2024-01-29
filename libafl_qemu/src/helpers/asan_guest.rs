@@ -279,6 +279,7 @@ where
     {
         hooks.reads(
             Hook::Function(gen_readwrite_guest_asan::<QT, S>),
+            Hook::Empty,
             Hook::Function(guest_trace_error_asan::<QT, S>),
             Hook::Function(guest_trace_error_asan::<QT, S>),
             Hook::Function(guest_trace_error_asan::<QT, S>),
@@ -288,6 +289,7 @@ where
 
         hooks.writes(
             Hook::Function(gen_readwrite_guest_asan::<QT, S>),
+            Hook::Empty,
             Hook::Function(guest_trace_error_asan::<QT, S>),
             Hook::Function(guest_trace_error_asan::<QT, S>),
             Hook::Function(guest_trace_error_asan::<QT, S>),

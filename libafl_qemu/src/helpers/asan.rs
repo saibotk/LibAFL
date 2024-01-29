@@ -945,6 +945,7 @@ where
     {
         hooks.reads(
             Hook::Function(gen_readwrite_asan::<QT, S>),
+            Hook::Empty,
             Hook::Function(trace_read1_asan::<QT, S>),
             Hook::Function(trace_read2_asan::<QT, S>),
             Hook::Function(trace_read4_asan::<QT, S>),
@@ -955,6 +956,7 @@ where
         if hooks.match_helper::<QemuSnapshotHelper>().is_none() {
             hooks.writes(
                 Hook::Function(gen_readwrite_asan::<QT, S>),
+                Hook::Empty,
                 Hook::Function(trace_write1_asan::<QT, S>),
                 Hook::Function(trace_write2_asan::<QT, S>),
                 Hook::Function(trace_write4_asan::<QT, S>),
@@ -965,6 +967,7 @@ where
             // track writes for both helpers as opt
             hooks.writes(
                 Hook::Function(gen_write_asan_snapshot::<QT, S>),
+                Hook::Empty,
                 Hook::Function(trace_write1_asan_snapshot::<QT, S>),
                 Hook::Function(trace_write2_asan_snapshot::<QT, S>),
                 Hook::Function(trace_write4_asan_snapshot::<QT, S>),
