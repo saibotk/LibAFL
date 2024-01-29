@@ -810,6 +810,7 @@ impl Qemu {
         &self,
         data: T,
         gen: Option<unsafe extern "C" fn(T, GuestAddr, *mut TCGTemp, MemAccessInfo) -> u64>,
+        exec_pre: Option<unsafe extern "C" fn(T, u64, GuestAddr, GuestAddr)>,
         exec1: Option<unsafe extern "C" fn(T, u64, GuestAddr)>,
         exec2: Option<unsafe extern "C" fn(T, u64, GuestAddr)>,
         exec4: Option<unsafe extern "C" fn(T, u64, GuestAddr)>,
@@ -826,6 +827,8 @@ impl Qemu {
                     libafl_qemu_sys::MemOpIdx,
                 ) -> u64,
             > = transmute(gen);
+            let exec_pre: Option<unsafe extern "C" fn(u64, u64, GuestAddr, GuestAddr)> =
+                transmute(exec_pre);
             let exec1: Option<unsafe extern "C" fn(u64, u64, GuestAddr)> = transmute(exec1);
             let exec2: Option<unsafe extern "C" fn(u64, u64, GuestAddr)> = transmute(exec2);
             let exec4: Option<unsafe extern "C" fn(u64, u64, GuestAddr)> = transmute(exec4);
@@ -833,7 +836,7 @@ impl Qemu {
             let exec_n: Option<unsafe extern "C" fn(u64, u64, GuestAddr, usize)> =
                 transmute(exec_n);
             let num = libafl_qemu_sys::libafl_add_read_hook(
-                gen, exec1, exec2, exec4, exec8, exec_n, data,
+                gen, exec_pre, exec1, exec2, exec4, exec8, exec_n, data,
             );
             ReadHookId(num)
         }
@@ -845,6 +848,7 @@ impl Qemu {
         &self,
         data: T,
         gen: Option<unsafe extern "C" fn(T, GuestAddr, *mut TCGTemp, MemAccessInfo) -> u64>,
+        exec_pre: Option<unsafe extern "C" fn(T, u64, GuestAddr, GuestAddr)>,
         exec1: Option<unsafe extern "C" fn(T, u64, GuestAddr)>,
         exec2: Option<unsafe extern "C" fn(T, u64, GuestAddr)>,
         exec4: Option<unsafe extern "C" fn(T, u64, GuestAddr)>,
@@ -861,6 +865,8 @@ impl Qemu {
                     libafl_qemu_sys::MemOpIdx,
                 ) -> u64,
             > = transmute(gen);
+            let exec_pre: Option<unsafe extern "C" fn(u64, u64, GuestAddr, GuestAddr)> =
+                transmute(exec_pre);
             let exec1: Option<unsafe extern "C" fn(u64, u64, GuestAddr)> = transmute(exec1);
             let exec2: Option<unsafe extern "C" fn(u64, u64, GuestAddr)> = transmute(exec2);
             let exec4: Option<unsafe extern "C" fn(u64, u64, GuestAddr)> = transmute(exec4);
@@ -868,7 +874,7 @@ impl Qemu {
             let exec_n: Option<unsafe extern "C" fn(u64, u64, GuestAddr, usize)> =
                 transmute(exec_n);
             let num = libafl_qemu_sys::libafl_add_write_hook(
-                gen, exec1, exec2, exec4, exec8, exec_n, data,
+                gen, exec_pre, exec1, exec2, exec4, exec8, exec_n, data,
             );
             WriteHookId(num)
         }

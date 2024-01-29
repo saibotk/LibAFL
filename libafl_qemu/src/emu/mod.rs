@@ -676,6 +676,7 @@ where
         &self,
         data: T,
         gen: Option<unsafe extern "C" fn(T, GuestAddr, *mut TCGTemp, MemAccessInfo) -> u64>,
+        exec_pre: Option<unsafe extern "C" fn(T, u64, GuestAddr, GuestAddr)>,
         exec1: Option<unsafe extern "C" fn(T, u64, GuestAddr)>,
         exec2: Option<unsafe extern "C" fn(T, u64, GuestAddr)>,
         exec4: Option<unsafe extern "C" fn(T, u64, GuestAddr)>,
@@ -683,7 +684,7 @@ where
         exec_n: Option<unsafe extern "C" fn(T, u64, GuestAddr, usize)>,
     ) -> ReadHookId {
         self.qemu
-            .add_read_hooks(data, gen, exec1, exec2, exec4, exec8, exec_n)
+            .add_read_hooks(data, gen, exec_pre, exec1, exec2, exec4, exec8, exec_n)
     }
 
     // TODO add MemOp info
@@ -694,6 +695,7 @@ where
         &self,
         data: T,
         gen: Option<unsafe extern "C" fn(T, GuestAddr, *mut TCGTemp, MemAccessInfo) -> u64>,
+        exec_pre: Option<unsafe extern "C" fn(T, u64, GuestAddr, GuestAddr)>,
         exec1: Option<unsafe extern "C" fn(T, u64, GuestAddr)>,
         exec2: Option<unsafe extern "C" fn(T, u64, GuestAddr)>,
         exec4: Option<unsafe extern "C" fn(T, u64, GuestAddr)>,
@@ -701,7 +703,7 @@ where
         exec_n: Option<unsafe extern "C" fn(T, u64, GuestAddr, usize)>,
     ) -> WriteHookId {
         self.qemu
-            .add_write_hooks(data, gen, exec1, exec2, exec4, exec8, exec_n)
+            .add_write_hooks(data, gen, exec_pre, exec1, exec2, exec4, exec8, exec_n)
     }
 
     #[deprecated(

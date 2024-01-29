@@ -13710,6 +13710,9 @@ extern "C" {
                 oi: MemOpIdx,
             ) -> u64,
         >,
+        exec_pre: ::std::option::Option<
+            unsafe extern "C" fn(data: u64, id: u64, addr: target_ulong, pc: target_ulong),
+        >,
         exec1: ::std::option::Option<unsafe extern "C" fn(data: u64, id: u64, addr: target_ulong)>,
         exec2: ::std::option::Option<unsafe extern "C" fn(data: u64, id: u64, addr: target_ulong)>,
         exec4: ::std::option::Option<unsafe extern "C" fn(data: u64, id: u64, addr: target_ulong)>,
@@ -13729,6 +13732,9 @@ extern "C" {
                 addr: *mut TCGTemp,
                 oi: MemOpIdx,
             ) -> u64,
+        >,
+        exec_pre: ::std::option::Option<
+            unsafe extern "C" fn(data: u64, id: u64, addr: target_ulong, pc: target_ulong),
         >,
         exec1: ::std::option::Option<unsafe extern "C" fn(data: u64, id: u64, addr: target_ulong)>,
         exec2: ::std::option::Option<unsafe extern "C" fn(data: u64, id: u64, addr: target_ulong)>,
@@ -13757,6 +13763,12 @@ extern "C" {
 }
 extern "C" {
     pub fn libafl_gen_write(addr: *mut TCGTemp, oi: MemOpIdx);
+}
+extern "C" {
+    pub fn libafl_gen_read_pre(addr: *mut TCGTemp, oi: MemOpIdx);
+}
+extern "C" {
+    pub fn libafl_gen_write_pre(addr: *mut TCGTemp, oi: MemOpIdx);
 }
 extern "C" {
     pub fn libafl_add_cmp_hook(

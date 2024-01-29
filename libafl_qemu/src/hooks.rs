@@ -310,6 +310,7 @@ create_exec_wrapper!(block, (id: u64), 0, 1, BlockHookId);
 
 static mut READ_HOOKS: Vec<Pin<Box<HookState<5, ReadHookId>>>> = vec![];
 create_gen_wrapper!(read, (pc: GuestAddr, addr: *mut TCGTemp, info: MemAccessInfo), u64, 5, ReadHookId);
+create_exec_wrapper!(read_pre, (id: u64, addr: GuestAddr, pc: GuestAddr), 0, 5, ReadHookId);
 create_exec_wrapper!(read, (id: u64, addr: GuestAddr), 0, 5, ReadHookId);
 create_exec_wrapper!(read, (id: u64, addr: GuestAddr), 1, 5, ReadHookId);
 create_exec_wrapper!(read, (id: u64, addr: GuestAddr), 2, 5, ReadHookId);
@@ -324,6 +325,7 @@ create_exec_wrapper!(
 
 static mut WRITE_HOOKS: Vec<Pin<Box<HookState<5, WriteHookId>>>> = vec![];
 create_gen_wrapper!(write, (pc: GuestAddr, addr: *mut TCGTemp, info: MemAccessInfo), u64, 5, WriteHookId);
+create_exec_wrapper!(write_pre, (id: u64, addr: GuestAddr, pc: GuestAddr), 0, 5, WriteHookId);
 create_exec_wrapper!(write, (id: u64, addr: GuestAddr), 0, 5, WriteHookId);
 create_exec_wrapper!(write, (id: u64, addr: GuestAddr), 1, 5, WriteHookId);
 create_exec_wrapper!(write, (id: u64, addr: GuestAddr), 2, 5, WriteHookId);
@@ -691,6 +693,11 @@ where
                 info: MemAccessInfo,
             ) -> u64,
         >,
+        execution_pre_hook: Hook<
+            fn(&mut Self, Option<&mut S>, id: u64, addr: GuestAddr, pc: GuestAddr),
+            Box<dyn for<'a> FnMut(&'a mut Self, Option<&'a mut S>, u64, GuestAddr, GuestAddr)>,
+            unsafe extern "C" fn(*const (), id: u64, addr: GuestAddr, GuestAddr),
+        >,
         execution_hook_1: Hook<
             fn(&mut Self, Option<&mut S>, id: u64, addr: GuestAddr),
             Box<dyn for<'a> FnMut(&'a mut Self, Option<&'a mut S>, u64, GuestAddr)>,
@@ -727,6 +734,16 @@ where
                     addr: *mut TCGTemp,
                     info: MemAccessInfo,
                 ) -> u64
+            );
+            let exec_pre = get_raw_hook!(
+                execution_pre_hook,
+                read_pre_0_exec_hook_wrapper::<QT, S>,
+                unsafe extern "C" fn(
+                    &mut HookState<5, ReadHookId>,
+                    id: u64,
+                    addr: GuestAddr,
+                    pc: GuestAddr,
+                )
             );
             let exec1 = get_raw_hook!(
                 execution_hook_1,
@@ -773,6 +790,7 @@ where
             let id = self.qemu.add_read_hooks(
                 READ_HOOKS.last_mut().unwrap().as_mut().get_unchecked_mut(),
                 gen,
+                exec_pre,
                 exec1,
                 exec2,
                 exec4,
@@ -816,6 +834,11 @@ where
                 info: MemAccessInfo,
             ) -> u64,
         >,
+        execution_pre_hook: Hook<
+            fn(&mut Self, Option<&mut S>, id: u64, addr: GuestAddr, pc: GuestAddr),
+            Box<dyn for<'a> FnMut(&'a mut Self, Option<&'a mut S>, u64, GuestAddr, GuestAddr)>,
+            unsafe extern "C" fn(*const (), id: u64, addr: GuestAddr, pc: GuestAddr),
+        >,
         execution_hook_1: Hook<
             fn(&mut Self, Option<&mut S>, id: u64, addr: GuestAddr),
             Box<dyn for<'a> FnMut(&'a mut Self, Option<&'a mut S>, u64, GuestAddr)>,
@@ -852,6 +875,16 @@ where
                     addr: *mut TCGTemp,
                     info: MemAccessInfo,
                 ) -> u64
+            );
+            let exec_pre = get_raw_hook!(
+                execution_pre_hook,
+                write_pre_0_exec_hook_wrapper::<QT, S>,
+                unsafe extern "C" fn(
+                    &mut HookState<5, WriteHookId>,
+                    id: u64,
+                    addr: GuestAddr,
+                    pc: GuestAddr,
+                )
             );
             let exec1 = get_raw_hook!(
                 execution_hook_1,
@@ -898,6 +931,7 @@ where
             let id = self.qemu.add_write_hooks(
                 WRITE_HOOKS.last_mut().unwrap().as_mut().get_unchecked_mut(),
                 gen,
+                exec_pre,
                 exec1,
                 exec2,
                 exec4,

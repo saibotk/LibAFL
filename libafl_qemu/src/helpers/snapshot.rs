@@ -618,6 +618,7 @@ where
             // The ASan helper, if present, will call the tracer hook for the snapshot helper as opt
             hooks.writes(
                 Hook::Empty,
+                Hook::Empty,
                 Hook::Function(trace_write_snapshot::<QT, S, 1>),
                 Hook::Function(trace_write_snapshot::<QT, S, 2>),
                 Hook::Function(trace_write_snapshot::<QT, S, 4>),
