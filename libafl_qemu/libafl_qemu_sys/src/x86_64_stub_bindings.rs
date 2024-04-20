@@ -13885,6 +13885,15 @@ extern "C" {
     pub fn libafl_qemu_remove_new_thread_hook(num: usize) -> ::std::os::raw::c_int;
 }
 extern "C" {
+    pub fn libafl_add_translate_gen_hook(
+        callback: ::std::option::Option<unsafe extern "C" fn(data: u64, pc: *mut vaddr)>,
+        data: u64,
+    ) -> usize;
+}
+extern "C" {
+    pub fn libafl_qemu_remove_translate_gen_hook(num: usize) -> ::std::os::raw::c_int;
+}
+extern "C" {
     pub fn libafl_tcg_gen_asan(addr: *mut TCGTemp, size: usize);
 }
 extern "C" {

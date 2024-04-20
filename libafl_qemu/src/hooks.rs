@@ -17,7 +17,7 @@ use libafl::{
     inputs::UsesInput,
     state::NopState,
 };
-use libafl_qemu_sys::{CPUArchStatePtr, FatPtr, GuestAddr, GuestUsize};
+use libafl_qemu_sys::{vaddr, CPUArchStatePtr, FatPtr, GuestAddr, GuestUsize};
 
 pub use crate::qemu::SyscallHookResult;
 use crate::{
@@ -25,7 +25,7 @@ use crate::{
     qemu::{MemAccessInfo, Qemu, SKIP_EXEC_HOOK},
     sys::TCGTemp,
     BackdoorHookId, BlockHookId, CmpHookId, EdgeHookId, HookId, InstructionHookId, ReadHookId,
-    WriteHookId,
+    TranslateGenHookId, WriteHookId,
 };
 #[cfg(emulation_mode = "usermode")]
 use crate::{NewThreadHookId, PostSyscallHookId, PreSyscallHookId};
@@ -298,6 +298,9 @@ create_wrapper!(
 static mut NEW_THREAD_HOOKS: Vec<Pin<Box<(NewThreadHookId, FatPtr)>>> = vec![];
 #[cfg(emulation_mode = "usermode")]
 create_wrapper!(new_thread, (tid: u32), bool);
+
+static mut TRANSLATE_GEN_HOOKS: Vec<Pin<Box<(TranslateGenHookId, FatPtr)>>> = vec![];
+create_wrapper!(translate_gen, (pc: *mut vaddr));
 
 static mut EDGE_HOOKS: Vec<Pin<Box<HookState<1, EdgeHookId>>>> = vec![];
 create_gen_wrapper!(edge, (src: GuestAddr, dest: GuestAddr), u64, 1, EdgeHookId);
@@ -1336,6 +1339,61 @@ where
                 closure_post_syscall_hook_wrapper::<QT, S>,
             );
             POST_SYSCALL_HOOKS
+                .last_mut()
+                .unwrap()
+                .as_mut()
+                .get_unchecked_mut()
+                .0 = id;
+            id
+        }
+    }
+
+    pub fn translate_gen_creation(
+        &self,
+        hook: Hook<
+            fn(&mut Self, Option<&mut S>, *mut vaddr),
+            Box<dyn for<'a> FnMut(&'a mut Self, Option<&'a mut S>, *mut vaddr)>,
+            unsafe extern "C" fn(*const (), pc: *mut vaddr),
+        >,
+    ) -> TranslateGenHookId {
+        match hook {
+            Hook::Function(f) => self.translate_gen_function(f),
+            Hook::Closure(c) => self.translate_gen_closure(c),
+            Hook::Raw(r) => {
+                let z: *const () = ptr::null::<()>();
+                self.qemu.add_translate_gen_hook(z, r)
+            }
+            Hook::Empty => TranslateGenHookId(0), // TODO error type
+        }
+    }
+
+    pub fn translate_gen_function(
+        &self,
+        hook: fn(&mut Self, Option<&mut S>, pc: *mut vaddr),
+    ) -> TranslateGenHookId {
+        unsafe {
+            self.qemu
+                .add_translate_gen_hook(transmute(hook), func_translate_gen_hook_wrapper::<QT, S>)
+        }
+    }
+
+    pub fn translate_gen_closure(
+        &self,
+        hook: Box<dyn for<'a> FnMut(&'a mut Self, Option<&'a mut S>, *mut vaddr)>,
+    ) -> TranslateGenHookId {
+        unsafe {
+            let fat: FatPtr = transmute(hook);
+            TRANSLATE_GEN_HOOKS.push(Box::pin((TranslateGenHookId(0), fat)));
+            let id = self.qemu.add_translate_gen_hook(
+                &mut TRANSLATE_GEN_HOOKS
+                    .last_mut()
+                    .unwrap()
+                    .as_mut()
+                    .get_unchecked_mut()
+                    .1,
+                closure_translate_gen_hook_wrapper::<QT, S>,
+            );
+            TRANSLATE_GEN_HOOKS
                 .last_mut()
                 .unwrap()
                 .as_mut()

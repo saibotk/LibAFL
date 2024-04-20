@@ -26,7 +26,7 @@ use libafl_qemu_sys::{
     libafl_qemu_cpu_index, libafl_qemu_current_cpu, libafl_qemu_gdb_reply, libafl_qemu_get_cpu,
     libafl_qemu_num_cpus, libafl_qemu_num_regs, libafl_qemu_read_reg,
     libafl_qemu_remove_breakpoint, libafl_qemu_set_breakpoint, libafl_qemu_trigger_breakpoint,
-    libafl_qemu_write_reg, CPUArchState, CPUArchStatePtr, CPUStatePtr, FatPtr, GuestAddr,
+    libafl_qemu_write_reg, vaddr, CPUArchState, CPUArchStatePtr, CPUStatePtr, FatPtr, GuestAddr,
     GuestPhysAddr, GuestUsize, GuestVirtAddr, TCGTemp,
 };
 use num_traits::Num;
@@ -85,6 +85,7 @@ create_hook_id!(Cmp, libafl_qemu_remove_cmp_hook, true);
 create_hook_id!(PreSyscall, libafl_qemu_remove_pre_syscall_hook, false);
 create_hook_id!(PostSyscall, libafl_qemu_remove_post_syscall_hook, false);
 create_hook_id!(NewThread, libafl_qemu_remove_new_thread_hook, false);
+create_hook_id!(TranslateGen, libafl_qemu_remove_translate_gen_hook, false);
 
 #[derive(Debug)]
 pub enum QemuInitError {
@@ -981,6 +982,20 @@ impl Qemu {
             let exec8: Option<unsafe extern "C" fn(u64, u64, u64, u64)> = transmute(exec8);
             let num = libafl_qemu_sys::libafl_add_cmp_hook(gen, exec1, exec2, exec4, exec8, data);
             CmpHookId(num)
+        }
+    }
+
+    #[allow(clippy::missing_transmute_annotations)]
+    pub fn add_translate_gen_hook<T: Into<HookData>>(
+        &self,
+        data: T,
+        gen: unsafe extern "C" fn(T, *mut vaddr),
+    ) -> TranslateGenHookId {
+        unsafe {
+            let data: u64 = data.into().0;
+            let gen: Option<unsafe extern "C" fn(u64, *mut vaddr)> = transmute(gen);
+            let num = libafl_qemu_sys::libafl_add_translate_gen_hook(gen, data);
+            TranslateGenHookId(num)
         }
     }
 
