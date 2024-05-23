@@ -155,6 +155,21 @@ pub trait Evaluator<E, EM>: UsesState {
         send_events: bool,
     ) -> Result<(ExecuteInputResult, Option<CorpusId>), Error>;
 
+    /// Evaluates an executed input exit kind and triggers observers and feedback.
+    /// This can be used, e.g. when the input was already executed but the result still needs to be
+    /// evaluated and possibly added to the corpus.
+    /// Adds an input, to the corpus even if it's not considered `interesting` by the `feedback`.
+    /// Returns the `index` of the new testcase in the corpus.
+    /// Usually, you want to use [`Evaluator::evaluate_input`], unless you know what you are doing.
+    fn evaluate_input_after_execute(
+        &mut self,
+        state: &mut Self::State,
+        executor: &mut E,
+        manager: &mut EM,
+        input: <Self::State as UsesInput>::Input,
+        exit_kind: ExitKind,
+    ) -> Result<(ExecuteInputResult, Option<CorpusId>), Error>;
+
     /// Runs the input and triggers observers and feedback.
     /// Adds an input, to the corpus even if it's not considered `interesting` by the `feedback`.
     /// Returns the `index` of the new testcase in the corpus.
@@ -502,7 +517,7 @@ where
                     .append_hit_feedbacks(testcase.hit_objectives_mut())?;
                 self.objective_mut()
                     .append_metadata(state, manager, observers, &mut testcase)?;
-                state.solutions_mut().add(testcase)?;
+                let id = state.solutions_mut().add(testcase)?;
 
                 if send_events {
                     manager.fire(
@@ -515,7 +530,7 @@ where
                     )?;
                 }
 
-                Ok(None)
+                Ok(Some(id))
             }
         }
     }
@@ -585,6 +600,21 @@ where
         let id = state.corpus_mut().add_disabled(testcase)?;
         Ok(id)
     }
+
+    fn evaluate_input_after_execute(
+        &mut self,
+        state: &mut Self::State,
+        executor: &mut E,
+        manager: &mut EM,
+        input: <Self::State as UsesInput>::Input,
+        exit_kind: ExitKind,
+    ) -> Result<(ExecuteInputResult, Option<CorpusId>), Error> {
+        let observers = executor.observers();
+
+        self.scheduler.on_evaluation(state, &input, &*observers)?;
+
+        self.evaluate_execution(state, manager, input, &*observers, &exit_kind, true)
+    }
     /// Adds an input, even if it's not considered `interesting` by any of the executors
     fn add_input(
         &mut self,
@@ -595,93 +625,26 @@ where
     ) -> Result<CorpusId, Error> {
         let exit_kind = self.execute_input(state, executor, manager, &input)?;
         let observers = executor.observers();
-        // Always consider this to be "interesting"
-        let mut testcase = Testcase::with_executions(input.clone(), *state.executions());
 
-        // Maybe a solution
-        #[cfg(not(feature = "introspection"))]
-        let is_solution =
-            self.objective_mut()
-                .is_interesting(state, manager, &input, &*observers, &exit_kind)?;
+        self.scheduler.on_evaluation(state, &input, &*observers)?;
 
-        #[cfg(feature = "introspection")]
-        let is_solution = self.objective_mut().is_interesting_introspection(
-            state,
-            manager,
-            &input,
-            &*observers,
-            &exit_kind,
-        )?;
-
-        if is_solution {
-            #[cfg(feature = "track_hit_feedbacks")]
-            self.objective_mut()
-                .append_hit_feedbacks(testcase.hit_objectives_mut())?;
-            self.objective_mut()
-                .append_metadata(state, manager, &*observers, &mut testcase)?;
-            let id = state.solutions_mut().add(testcase)?;
-
-            let executions = *state.executions();
-            manager.fire(
-                state,
-                Event::Objective {
-                    objective_size: state.solutions().count(),
-                    executions,
-                    time: current_time(),
-                },
-            )?;
-            return Ok(id);
+        // Remap the uninteresting result to a normal corups result, because this function should cause the input
+        // to be added in any case.
+        let mut result = self.check_results(state, manager, &input, &*observers, &exit_kind)?;
+        if result == ExecuteInputResult::None {
+            result = ExecuteInputResult::Corpus;
         }
 
-        // Not a solution
-        self.objective_mut().discard_metadata(state, &input)?;
-
-        // several is_interesting implementations collect some data about the run, later used in
-        // append_metadata; we *must* invoke is_interesting here to collect it
-        #[cfg(not(feature = "introspection"))]
-        let _corpus_worthy =
-            self.feedback_mut()
-                .is_interesting(state, manager, &input, &*observers, &exit_kind)?;
-
-        #[cfg(feature = "introspection")]
-        let _corpus_worthy = self.feedback_mut().is_interesting_introspection(
+        self.process_execution(
             state,
             manager,
-            &input,
+            input,
+            &result,
             &*observers,
             &exit_kind,
-        )?;
-
-        #[cfg(feature = "track_hit_feedbacks")]
-        self.feedback_mut()
-            .append_hit_feedbacks(testcase.hit_feedbacks_mut())?;
-        // Add the input to the main corpus
-        self.feedback_mut()
-            .append_metadata(state, manager, &*observers, &mut testcase)?;
-        let id = state.corpus_mut().add(testcase)?;
-        self.scheduler_mut().on_add(state, id)?;
-
-        let observers_buf = if manager.configuration() == EventConfig::AlwaysUnique {
-            None
-        } else {
-            manager.serialize_observers::<OT>(&*observers)?
-        };
-        manager.fire(
-            state,
-            Event::NewTestcase {
-                input,
-                observers_buf,
-                exit_kind,
-                corpus_size: state.corpus().count(),
-                client_config: manager.configuration(),
-                time: current_time(),
-                executions: *state.executions(),
-                forward_id: None,
-                #[cfg(all(unix, feature = "std", feature = "multi_machine"))]
-                node_id: None,
-            },
-        )?;
-        Ok(id)
+            true,
+        )
+        .map(|x| x.expect("Corpus ID is missing after process execution"))
     }
 }
 
