@@ -159,6 +159,21 @@ where
         send_events: bool,
     ) -> Result<(ExecuteInputResult, Option<CorpusId>), Error>;
 
+    /// Evaluates an executed input exit kind and triggers observers and feedback.
+    /// This can be used e.g. when the input was executed but the result still needs to be evaluated and
+    /// possibly added to the corpus.
+    /// Adds an input, to the corpus even if it's not considered `interesting` by the `feedback`.
+    /// Returns the `index` of the new testcase in the corpus.
+    /// Usually, you want to use [`Evaluator::evaluate_input`], unless you know what you are doing.
+    fn evaluate_input_exit_kind(
+        &mut self,
+        state: &mut Self::State,
+        executor: &mut E,
+        manager: &mut EM,
+        input: <Self::State as UsesInput>::Input,
+        exit_kind: ExitKind,
+    ) -> Result<CorpusId, Error>;
+
     /// Runs the input and triggers observers and feedback.
     /// Adds an input, to the corpus even if it's not considered `interesting` by the `feedback`.
     /// Returns the `index` of the new testcase in the corpus.
@@ -592,15 +607,15 @@ where
         let idx = state.corpus_mut().add_disabled(testcase)?;
         Ok(idx)
     }
-    /// Adds an input, even if it's not considered `interesting` by any of the executors
-    fn add_input(
+
+    fn evaluate_input_exit_kind(
         &mut self,
         state: &mut Self::State,
         executor: &mut E,
         manager: &mut EM,
         input: <Self::State as UsesInput>::Input,
+        exit_kind: ExitKind,
     ) -> Result<CorpusId, Error> {
-        let exit_kind = self.execute_input(state, executor, manager, &input)?;
         let observers = executor.observers();
         // Always consider this to be "interesting"
         let mut testcase = Testcase::with_executions(input.clone(), *state.executions());
@@ -681,6 +696,19 @@ where
             },
         )?;
         Ok(idx)
+    }
+
+    /// Adds an input, even if it's not considered `interesting` by any of the executors
+    fn add_input(
+        &mut self,
+        state: &mut Self::State,
+        executor: &mut E,
+        manager: &mut EM,
+        input: <Self::State as UsesInput>::Input,
+    ) -> Result<CorpusId, Error> {
+        let exit_kind = self.execute_input(state, executor, manager, &input)?;
+
+        self.evaluate_input_exit_kind(state, executor, manager, input, exit_kind)
     }
 }
 
