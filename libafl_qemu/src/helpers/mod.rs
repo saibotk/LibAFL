@@ -30,21 +30,42 @@ pub mod injections;
 #[cfg(all(emulation_mode = "usermode", feature = "injections"))]
 pub use injections::QemuInjectionHelper;
 
-#[cfg(all(emulation_mode = "usermode", not(cpu_target = "hexagon")))]
+#[cfg(all(
+    emulation_mode = "usermode",
+    not(any(cpu_target = "hexagon", cpu_target = "riscv32", cpu_target = "riscv64"))
+))]
 pub mod snapshot;
-#[cfg(all(emulation_mode = "usermode", not(cpu_target = "hexagon")))]
+#[cfg(all(
+    emulation_mode = "usermode",
+    not(any(cpu_target = "hexagon", cpu_target = "riscv32", cpu_target = "riscv64"))
+))]
 pub use snapshot::IntervalSnapshotFilter;
-#[cfg(all(emulation_mode = "usermode", not(cpu_target = "hexagon")))]
+#[cfg(all(
+    emulation_mode = "usermode",
+    not(any(cpu_target = "hexagon", cpu_target = "riscv32", cpu_target = "riscv64"))
+))]
 pub use snapshot::QemuSnapshotHelper;
 
-#[cfg(all(emulation_mode = "usermode", not(cpu_target = "hexagon")))]
+#[cfg(all(
+    emulation_mode = "usermode",
+    not(any(cpu_target = "hexagon", cpu_target = "riscv32", cpu_target = "riscv64"))
+))]
 pub mod asan;
-#[cfg(all(emulation_mode = "usermode", not(cpu_target = "hexagon")))]
+#[cfg(all(
+    emulation_mode = "usermode",
+    not(any(cpu_target = "hexagon", cpu_target = "riscv32", cpu_target = "riscv64"))
+))]
 pub use asan::{init_qemu_with_asan, QemuAsanHelper};
 
-#[cfg(all(emulation_mode = "usermode", not(cpu_target = "hexagon")))]
+#[cfg(all(
+    emulation_mode = "usermode",
+    not(any(cpu_target = "hexagon", cpu_target = "riscv32", cpu_target = "riscv64"))
+))]
 pub mod asan_guest;
-#[cfg(all(emulation_mode = "usermode", not(cpu_target = "hexagon")))]
+#[cfg(all(
+    emulation_mode = "usermode",
+    not(any(cpu_target = "hexagon", cpu_target = "riscv32", cpu_target = "riscv64"))
+))]
 pub use asan_guest::{init_qemu_with_asan_guest, QemuAsanGuestHelper};
 
 /// A helper for `libafl_qemu`.
