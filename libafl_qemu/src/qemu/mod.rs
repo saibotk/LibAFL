@@ -75,7 +75,7 @@ macro_rules! create_hook_id {
     };
 }
 
-create_hook_id!(Instruction, libafl_qemu_remove_hook, true);
+create_hook_id!(Instruction, libafl_qemu_remove_instruction_hook, true);
 create_hook_id!(Backdoor, libafl_qemu_remove_backdoor_hook, true);
 create_hook_id!(Edge, libafl_qemu_remove_edge_hook, true);
 create_hook_id!(Block, libafl_qemu_remove_block_hook, true);
@@ -818,7 +818,7 @@ impl Qemu {
         unsafe {
             let data: u64 = data.into().0;
             let callback: extern "C" fn(u64, GuestAddr) = transmute(callback);
-            let num = libafl_qemu_sys::libafl_qemu_set_hook(
+            let num = libafl_qemu_sys::libafl_qemu_add_instruction_hooks(
                 addr.into(),
                 Some(callback),
                 data,
@@ -836,7 +836,10 @@ impl Qemu {
     #[must_use]
     pub fn remove_hooks_at(&self, addr: GuestAddr, invalidate_block: bool) -> usize {
         unsafe {
-            libafl_qemu_sys::libafl_qemu_remove_hooks_at(addr.into(), i32::from(invalidate_block))
+            libafl_qemu_sys::libafl_qemu_remove_instruction_hooks_at(
+                addr.into(),
+                i32::from(invalidate_block),
+            )
         }
     }
 
