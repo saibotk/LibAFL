@@ -286,7 +286,7 @@ impl TuiUI {
 
         let right_top_layout = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(7), Constraint::Length(5)].as_ref())
+            .constraints([Constraint::Length(7), Constraint::Fill(1)].as_ref())
             .split(right_layout);
         let right_bottom_layout = right_top_layout[1];
         self.draw_item_geometry_text(f, app, right_top_layout[0], false);
@@ -624,7 +624,21 @@ impl TuiUI {
     ) {
         let items = {
             let app = app.read().unwrap();
-            vec![
+
+            let mut user_rows = app
+                .clients
+                .get(&self.clients_idx)
+                .into_iter()
+                .flat_map(|x| &x.user_stats)
+                .map(|x| {
+                    Row::new(vec![
+                        Cell::from(Span::raw(x.0.to_string())),
+                        Cell::from(Span::raw(x.1.value.to_string())),
+                    ])
+                })
+                .collect::<Vec<Row>>();
+
+            let mut rows = vec![
                 Row::new(vec![
                     Cell::from(Span::raw("cycles done")),
                     Cell::from(Span::raw(format!(
@@ -643,7 +657,10 @@ impl TuiUI {
                             .map_or(0, |x| x.objectives)
                     ))),
                 ]),
-            ]
+            ];
+            rows.append(&mut user_rows);
+
+            rows
         };
 
         let table = Table::default()
