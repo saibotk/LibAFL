@@ -2,6 +2,8 @@ use core::ffi::c_long;
 use std::sync::OnceLock;
 
 use capstone::arch::BuildsCapstone;
+#[cfg(feature = "compressed_instructions")]
+use capstone::arch::BuildsCapstoneExtraMode;
 use enum_map::{enum_map, EnumMap};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "python")]
@@ -226,14 +228,18 @@ pub type GuestReg = u64;
 
 /// Return a RISCV ArchCapstoneBuilder
 pub fn capstone() -> capstone::arch::riscv::ArchCapstoneBuilder {
+    let builder = capstone::Capstone::new().riscv();
+
     #[cfg(not(feature = "riscv64"))]
-    return capstone::Capstone::new()
-        .riscv()
-        .mode(capstone::arch::riscv::ArchMode::RiscV32);
+    let builder = builder.mode(capstone::arch::riscv::ArchMode::RiscV32);
     #[cfg(feature = "riscv64")]
-    return capstone::Capstone::new()
-        .riscv()
-        .mode(capstone::arch::riscv::ArchMode::RiscV64);
+    let builder = builder.mode(capstone::arch::riscv::ArchMode::RiscV64);
+
+    #[cfg(feature = "compressed_instructions")]
+    let builder =
+        builder.extra_mode(vec![capstone::arch::riscv::ArchExtraMode::RiscVC].into_iter());
+
+    builder
 }
 
 impl crate::ArchExtras for crate::CPU {
