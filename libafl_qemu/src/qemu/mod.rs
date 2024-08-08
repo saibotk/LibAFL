@@ -992,11 +992,11 @@ impl Qemu {
     pub fn add_translate_gen_hook<T: Into<HookData>>(
         &self,
         data: T,
-        gen: unsafe extern "C" fn(T, *mut vaddr),
+        gen: unsafe extern "C" fn(T, *mut vaddr) -> bool,
     ) -> TranslateGenHookId {
         unsafe {
             let data: u64 = data.into().0;
-            let gen: Option<unsafe extern "C" fn(u64, *mut vaddr)> = transmute(gen);
+            let gen: Option<unsafe extern "C" fn(u64, *mut vaddr) -> bool> = transmute(gen);
             let num = libafl_qemu_sys::libafl_add_translate_gen_hook(gen, data);
             TranslateGenHookId(num)
         }

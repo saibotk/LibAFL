@@ -13886,7 +13886,7 @@ extern "C" {
 }
 extern "C" {
     pub fn libafl_add_translate_gen_hook(
-        callback: ::std::option::Option<unsafe extern "C" fn(data: u64, pc: *mut vaddr)>,
+        callback: ::std::option::Option<unsafe extern "C" fn(data: u64, pc: *mut vaddr) -> bool>,
         data: u64,
     ) -> usize;
 }

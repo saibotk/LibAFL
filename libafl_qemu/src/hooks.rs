@@ -300,7 +300,7 @@ static mut NEW_THREAD_HOOKS: Vec<Pin<Box<(NewThreadHookId, FatPtr)>>> = vec![];
 create_wrapper!(new_thread, (tid: u32), bool);
 
 static mut TRANSLATE_GEN_HOOKS: Vec<Pin<Box<(TranslateGenHookId, FatPtr)>>> = vec![];
-create_wrapper!(translate_gen, (pc: *mut vaddr));
+create_wrapper!(translate_gen, (pc: *mut vaddr), bool);
 
 static mut EDGE_HOOKS: Vec<Pin<Box<HookState<1, EdgeHookId>>>> = vec![];
 create_gen_wrapper!(edge, (src: GuestAddr, dest: GuestAddr), u64, 1, EdgeHookId);
@@ -1351,9 +1351,9 @@ where
     pub fn translate_gen_creation(
         &self,
         hook: Hook<
-            fn(&mut Self, Option<&mut S>, *mut vaddr),
-            Box<dyn for<'a> FnMut(&'a mut Self, Option<&'a mut S>, *mut vaddr)>,
-            unsafe extern "C" fn(*const (), pc: *mut vaddr),
+            fn(&mut Self, Option<&mut S>, *mut vaddr) -> bool,
+            Box<dyn for<'a> FnMut(&'a mut Self, Option<&'a mut S>, *mut vaddr) -> bool>,
+            unsafe extern "C" fn(*const (), pc: *mut vaddr) -> bool,
         >,
     ) -> TranslateGenHookId {
         match hook {
@@ -1369,7 +1369,7 @@ where
 
     pub fn translate_gen_function(
         &self,
-        hook: fn(&mut Self, Option<&mut S>, pc: *mut vaddr),
+        hook: fn(&mut Self, Option<&mut S>, pc: *mut vaddr) -> bool,
     ) -> TranslateGenHookId {
         unsafe {
             self.qemu
@@ -1379,7 +1379,7 @@ where
 
     pub fn translate_gen_closure(
         &self,
-        hook: Box<dyn for<'a> FnMut(&'a mut Self, Option<&'a mut S>, *mut vaddr)>,
+        hook: Box<dyn for<'a> FnMut(&'a mut Self, Option<&'a mut S>, *mut vaddr) -> bool>,
     ) -> TranslateGenHookId {
         unsafe {
             let fat: FatPtr = transmute(hook);
