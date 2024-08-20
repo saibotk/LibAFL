@@ -171,6 +171,11 @@ where
     fn on_add(&mut self, _state: &mut Self::State, _id: CorpusId) -> Result<(), Error>;
     // Add parent_id here if it has no inner
 
+    /// Called when a [`Testcase`] is added to the solution corpus
+    fn on_add_solution(&mut self, _state: &mut Self::State, _id: CorpusId) -> Result<(), Error> {
+        Ok(())
+    }
+
     /// An input has been evaluated
     fn on_evaluation<OT>(
         &mut self,

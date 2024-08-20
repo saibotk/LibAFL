@@ -518,6 +518,7 @@ where
                 self.objective_mut()
                     .append_metadata(state, manager, observers, &mut testcase)?;
                 let id = state.solutions_mut().add(testcase)?;
+                self.scheduler_mut().on_add_solution(state, id)?;
 
                 if send_events {
                     manager.fire(
