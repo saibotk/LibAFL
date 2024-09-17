@@ -444,7 +444,7 @@ impl ClientStats {
     /// Get the calculated executions per second for this client
     #[allow(clippy::cast_precision_loss, clippy::cast_sign_loss)]
     #[cfg(not(feature = "afl_exec_sec"))]
-    pub fn execs_per_sec(&mut self, cur_time: Duration) -> f64 {
+    pub fn execs_per_sec(&self, cur_time: Duration) -> f64 {
         if self.executions == 0 {
             return 0.0;
         }
