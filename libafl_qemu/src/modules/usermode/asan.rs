@@ -14,12 +14,11 @@ use rangemap::RangeMap;
 use crate::{
     modules::{
         calls::FullBacktraceCollector, snapshot::SnapshotModule, EmulatorModule,
-        EmulatorModuleTuple, HasInstrumentationFilter, IsFilter,
-        QemuInstrumentationAddressRangeFilter,
+        EmulatorModuleTuple,
     },
     qemu::{MemAccessInfo, QemuInitError},
     sys::TCGTemp,
-    GuestAddr, Qemu, Regs,
+    Qemu, Regs,
 };
 
 // TODO at some point, merge parts with libafl_frida
@@ -149,10 +148,12 @@ impl AllocTreeItem {
 }
 use std::pin::Pin;
 
+use libafl_qemu_sys::GuestAddr;
 use object::{Object, ObjectSection};
 
 use crate::{
     emu::EmulatorModules,
+    modules::{AddressFilter, StdAddressFilter},
     qemu::{Hook, QemuHooks, SyscallHookResult},
 };
 
@@ -478,6 +479,9 @@ impl AsanGiovese {
     }
 
     pub fn alloc_insert(&mut self, pc: GuestAddr, start: GuestAddr, end: GuestAddr) {
+        // # Safety
+        // Will access the global [`FullBacktraceCollector`].
+        // Calling this function concurrently might be racey.
         let backtrace = FullBacktraceCollector::backtrace()
             .map(|r| {
                 let mut v = r.to_vec();
@@ -503,6 +507,9 @@ impl AsanGiovese {
     }
 
     pub fn alloc_free(&mut self, qemu: Qemu, pc: GuestAddr, addr: GuestAddr) {
+        // # Safety
+        // Will access the global [`FullBacktraceCollector`].
+        // Calling this function concurrently might be racey.
         let mut chunk = None;
         self.alloc_map_mut(addr, |interval, item| {
             chunk = Some(*interval);
@@ -684,6 +691,7 @@ pub fn init_qemu_with_asan(
     let add_asan =
         |e: &str| "LD_PRELOAD=".to_string() + &asan_lib + " " + &e["LD_PRELOAD=".len()..];
 
+    // TODO: adapt since qemu does not take envp anymore as parameter
     let mut added = false;
     for (k, v) in &mut *env {
         if k == "QEMU_SET_ENV" {
@@ -716,7 +724,7 @@ pub fn init_qemu_with_asan(
         ASAN_INITED = true;
     }
 
-    let qemu = Qemu::init(args, env)?;
+    let qemu = Qemu::init(args)?;
     let rt = AsanGiovese::new(qemu.hooks());
 
     Ok((qemu, rt))
@@ -737,24 +745,20 @@ pub struct AsanModule {
     detect_leaks: bool,
     empty: bool,
     rt: Pin<Box<AsanGiovese>>,
-    filter: QemuInstrumentationAddressRangeFilter,
+    filter: StdAddressFilter,
 }
 
 impl AsanModule {
     #[must_use]
     pub fn default(rt: Pin<Box<AsanGiovese>>) -> Self {
-        Self::new(
-            rt,
-            QemuInstrumentationAddressRangeFilter::None,
-            QemuAsanOptions::Snapshot,
-        )
+        Self::new(rt, StdAddressFilter::default(), &QemuAsanOptions::Snapshot)
     }
 
     #[must_use]
     pub fn new(
         mut rt: Pin<Box<AsanGiovese>>,
-        filter: QemuInstrumentationAddressRangeFilter,
-        options: QemuAsanOptions,
+        filter: StdAddressFilter,
+        options: &QemuAsanOptions,
     ) -> Self {
         assert!(unsafe { ASAN_INITED }, "The ASan runtime is not initialized, use init_qemu_with_asan(...) instead of just Qemu::init(...)");
         let (snapshot, detect_leaks) = match options {
@@ -776,9 +780,9 @@ impl AsanModule {
     #[must_use]
     pub fn with_error_callback(
         mut rt: Pin<Box<AsanGiovese>>,
-        filter: QemuInstrumentationAddressRangeFilter,
+        filter: StdAddressFilter,
         error_callback: AsanErrorCallback,
-        options: QemuAsanOptions,
+        options: &QemuAsanOptions,
     ) -> Self {
         assert!(unsafe { ASAN_INITED },  "The ASan runtime is not initialized, use init_qemu_with_asan(...) instead of just Qemu::init(...)");
         let (snapshot, detect_leaks) = match options {
@@ -798,18 +802,25 @@ impl AsanModule {
         }
     }
 
+    /// # Safety
+    /// The `ASan` error report accesses [`FullBacktraceCollector`]
     #[must_use]
-    pub fn with_asan_report(
+    pub unsafe fn with_asan_report(
         rt: Pin<Box<AsanGiovese>>,
-        filter: QemuInstrumentationAddressRangeFilter,
-        options: QemuAsanOptions,
+        filter: StdAddressFilter,
+        options: &QemuAsanOptions,
     ) -> Self {
-        Self::with_error_callback(rt, filter, Box::new(asan_report), options)
+        Self::with_error_callback(
+            rt,
+            filter,
+            Box::new(|rt, qemu, pc, err| unsafe { asan_report(rt, qemu, pc, &err) }),
+            options,
+        )
     }
 
     #[must_use]
     pub fn must_instrument(&self, addr: GuestAddr) -> bool {
-        self.filter.allowed(addr)
+        self.filter.allowed(&addr)
     }
 
     #[must_use]
@@ -911,20 +922,11 @@ impl AsanModule {
     }
 }
 
-impl HasInstrumentationFilter<QemuInstrumentationAddressRangeFilter> for AsanModule {
-    fn filter(&self) -> &QemuInstrumentationAddressRangeFilter {
-        &self.filter
-    }
-
-    fn filter_mut(&mut self) -> &mut QemuInstrumentationAddressRangeFilter {
-        &mut self.filter
-    }
-}
-
 impl<S> EmulatorModule<S> for AsanModule
 where
     S: Unpin + UsesInput,
 {
+    type ModuleAddressFilter = StdAddressFilter;
     const HOOKS_DO_SIDE_EFFECTS: bool = false;
 
     fn init_module<ET>(&self, emulator_modules: &mut EmulatorModules<ET, S>)
@@ -938,7 +940,7 @@ where
         }
     }
 
-    fn first_exec<ET>(&mut self, emulator_modules: &mut EmulatorModules<ET, S>)
+    fn first_exec<ET>(&mut self, emulator_modules: &mut EmulatorModules<ET, S>, _state: &mut S)
     where
         ET: EmulatorModuleTuple<S>,
     {
@@ -973,8 +975,12 @@ where
         }
     }
 
-    fn pre_exec<ET>(&mut self, emulator_modules: &mut EmulatorModules<ET, S>, _input: &S::Input)
-    where
+    fn pre_exec<ET>(
+        &mut self,
+        emulator_modules: &mut EmulatorModules<ET, S>,
+        _state: &mut S,
+        _input: &S::Input,
+    ) where
         ET: EmulatorModuleTuple<S>,
     {
         if self.empty {
@@ -986,16 +992,25 @@ where
     fn post_exec<OT, ET>(
         &mut self,
         emulator_modules: &mut EmulatorModules<ET, S>,
+        _state: &mut S,
         _input: &S::Input,
         _observers: &mut OT,
         exit_kind: &mut ExitKind,
     ) where
-        OT: ObserversTuple<S>,
+        OT: ObserversTuple<S::Input, S>,
         ET: EmulatorModuleTuple<S>,
     {
         if self.reset(emulator_modules.qemu()) == AsanRollback::HasLeaks {
             *exit_kind = ExitKind::Crash;
         }
+    }
+
+    fn address_filter(&self) -> &Self::ModuleAddressFilter {
+        &self.filter
+    }
+
+    fn address_filter_mut(&mut self) -> &mut Self::ModuleAddressFilter {
+        &mut self.filter
     }
 }
 
@@ -1516,9 +1531,12 @@ mod addr2line_legacy {
     }
 }
 
+/// # Safety
+/// Will access the global [`FullBacktraceCollector`].
+/// Calling this function concurrently might be racey.
 #[allow(clippy::unnecessary_cast)]
 #[allow(clippy::too_many_lines)]
-pub fn asan_report(rt: &AsanGiovese, qemu: Qemu, pc: GuestAddr, err: AsanError) {
+pub unsafe fn asan_report(rt: &AsanGiovese, qemu: Qemu, pc: GuestAddr, err: &AsanError) {
     let mut regions = HashMap::new();
     for region in qemu.mappings() {
         if let Some(path) = region.path() {
@@ -1650,7 +1668,7 @@ pub fn asan_report(rt: &AsanGiovese, qemu: Qemu, pc: GuestAddr, err: AsanError) 
     }
     let addr = match err {
         AsanError::Read(addr, _) | AsanError::Write(addr, _) | AsanError::BadFree(addr, _) => {
-            Some(addr)
+            Some(*addr)
         }
         AsanError::MemLeak(_) | AsanError::Signal(_) => None,
     };

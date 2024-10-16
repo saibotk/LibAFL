@@ -12,16 +12,17 @@ use libafl_qemu_sys::{
     libafl_save_qemu_snapshot, qemu_cleanup, qemu_main_loop, vm_start, GuestAddr, GuestPhysAddr,
     GuestUsize, GuestVirtAddr,
 };
+use libc::EXIT_SUCCESS;
 use num_traits::Zero;
 
 use crate::{
-    FastSnapshotPtr, GuestAddrKind, MemAccessInfo, Qemu, QemuMemoryChunk, QemuSnapshotCheckResult,
-    CPU,
+    FastSnapshotPtr, GuestAddrKind, MemAccessInfo, Qemu, QemuMemoryChunk, QemuRWError,
+    QemuRWErrorCause, QemuRWErrorKind, QemuSnapshotCheckResult, CPU,
 };
 
 pub(super) extern "C" fn qemu_cleanup_atexit() {
     unsafe {
-        qemu_cleanup();
+        qemu_cleanup(EXIT_SUCCESS);
     }
 }
 
@@ -139,38 +140,40 @@ impl CPU {
         }
     }
 
-    /// Write a value to a guest address.
+    /// Read a value from a guest address, taking into account the potential MMU / MPU.
     ///
     /// # Safety
-    /// This will write to a translated guest address (using `g2h`).
-    /// It just adds `guest_base` and writes to that location, without checking the bounds.
-    /// This may only be safely used for valid guest addresses!
-    pub unsafe fn write_mem(&self, addr: GuestAddr, buf: &[u8]) {
+    /// no check is done on the correctness of the operation.
+    /// if a problem occurred during the operation, there will be no feedback
+    pub unsafe fn read_mem_unchecked(&self, addr: GuestAddr, buf: &mut [u8]) {
         // TODO use gdbstub's target_cpu_memory_rw_debug
-        libafl_qemu_sys::cpu_memory_rw_debug(
-            self.ptr,
-            addr as GuestVirtAddr,
-            buf.as_ptr() as *mut _,
-            buf.len(),
-            true,
-        );
+        unsafe {
+            libafl_qemu_sys::cpu_memory_rw_debug(
+                self.ptr,
+                addr as GuestVirtAddr,
+                buf.as_mut_ptr() as *mut _,
+                buf.len(),
+                false,
+            )
+        };
     }
 
-    /// Read a value from a guest address.
+    /// Write a value to a guest address, taking into account the potential MMU / MPU.
     ///
     /// # Safety
-    /// This will read from a translated guest address (using `g2h`).
-    /// It just adds `guest_base` and writes to that location, without checking the bounds.
-    /// This may only be safely used for valid guest addresses!
-    pub unsafe fn read_mem(&self, addr: GuestAddr, buf: &mut [u8]) {
+    /// no check is done on the correctness of the operation.
+    /// if a problem occurred during the operation, there will be no feedback
+    pub fn write_mem_unchecked(&self, addr: GuestAddr, buf: &[u8]) {
         // TODO use gdbstub's target_cpu_memory_rw_debug
-        libafl_qemu_sys::cpu_memory_rw_debug(
-            self.ptr,
-            addr as GuestVirtAddr,
-            buf.as_mut_ptr() as *mut _,
-            buf.len(),
-            false,
-        );
+        unsafe {
+            libafl_qemu_sys::cpu_memory_rw_debug(
+                self.ptr,
+                addr as GuestVirtAddr,
+                buf.as_ptr() as *mut _,
+                buf.len(),
+                true,
+            )
+        };
     }
 }
 
@@ -181,6 +184,12 @@ impl Qemu {
     }
 
     /// Write a value to a physical guest address, including ROM areas.
+    ///
+    /// # Safety
+    ///
+    /// No check is done on the correctness of the operation at the moment.
+    /// Nothing bad will happen if the operation is incorrect, but it will be silently skipped.
+    // TODO: use address_space_rw and check for the result MemTxResult
     pub unsafe fn write_phys_mem(&self, paddr: GuestPhysAddr, buf: &[u8]) {
         libafl_qemu_sys::cpu_physical_memory_rw(
             paddr,
@@ -190,7 +199,13 @@ impl Qemu {
         );
     }
 
-    /// Read a value from a physical guest address.
+    /// Read a value from a physical guest address, including ROM areas.
+    ///
+    /// # Safety
+    ///
+    /// No check is done on the correctness of the operation at the moment.
+    /// Nothing bad will happen if the operation is incorrect, but it will be silently skipped.
+    // TODO: use address_space_rw and check for the result MemTxResult
     pub unsafe fn read_phys_mem(&self, paddr: GuestPhysAddr, buf: &mut [u8]) {
         libafl_qemu_sys::cpu_physical_memory_rw(
             paddr,
@@ -207,12 +222,12 @@ impl Qemu {
 
     pub fn save_snapshot(&self, name: &str, sync: bool) {
         let s = CString::new(name).expect("Invalid snapshot name");
-        unsafe { libafl_save_qemu_snapshot(s.as_ptr() as *const _, sync) };
+        unsafe { libafl_save_qemu_snapshot(s.as_ptr() as *mut i8, sync) };
     }
 
     pub fn load_snapshot(&self, name: &str, sync: bool) {
         let s = CString::new(name).expect("Invalid snapshot name");
-        unsafe { libafl_load_qemu_snapshot(s.as_ptr() as *const _, sync) };
+        unsafe { libafl_load_qemu_snapshot(s.as_ptr() as *mut i8, sync) };
     }
 
     #[must_use]
@@ -254,9 +269,7 @@ impl Qemu {
     ) -> QemuSnapshotCheckResult {
         let check_result = libafl_qemu_sys::syx_snapshot_check(ref_snapshot);
 
-        QemuSnapshotCheckResult {
-            nb_page_inconsistencies: check_result.nb_inconsistencies,
-        }
+        QemuSnapshotCheckResult::new(check_result.nb_inconsistencies)
     }
 
     pub fn list_devices(&self) -> Vec<String> {
