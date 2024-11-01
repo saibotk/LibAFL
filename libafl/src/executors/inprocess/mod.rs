@@ -430,6 +430,11 @@ pub fn run_observers_and_save_state<E, EM, Z>(
     E::State: HasExecutions + HasSolutions + HasCorpus,
     Z: Evaluator<E, EM, State = E::State>,
 {
+    let mut observers = executor.observers_mut();
+    observers
+        .post_exec_all(state, input, &exitkind)
+        .expect("Observers post_exec_all failed");
+
     fuzzer
         .evaluate_input_after_execute(state, executor, event_mgr, input.clone(), exitkind)
         .expect("Could not evaluate exit kind of input after crash");
